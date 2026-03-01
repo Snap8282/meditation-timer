@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meditation Bell</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      display: grid;
+      place-items: center;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    button {
+      appearance: none;
+      border: 1px solid #333;
+      background: #000;
+      color: #fff;
+      padding: 18px 28px;
+      font-size: 18px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: opacity 2s linear;
+    }
+    button:disabled {
+      /* opacity: 0.55; */
+      cursor: default;
+    }
+    button.fadeout {
+      opacity: 0;
+    }
+    button.fadein {
+      opacity: 0.55;
+      transition: opacity 5s linear
+    }
+    .top-image {
+      max-width: 750px;
+      width: 90vw;
+      height: auto;
+      border-radius: 16px;
+      margin-bottom: 20px;
+      transition: opacity 2s linear;
+      opacity: 0.5;
+    }
+    .top-image.fadeout {
+      opacity: 0;
+    }
+    .top-image.fadein {
+      opacity: 0.5;
+      transition: opacity 10s linear;
+    }
+  </style>
+</head>
+<body>
+  <img src="meditation.png" alt="Meditation Image" class="top-image">
+  <button id="startBtn">Start</button>
+
+  <!-- Audio files -->
+  <audio id="meditationStart" src="bell_big_starting.mp3" preload="auto"></audio>
+  <audio id="meditationEnd"   src="bell_big_ending.mp3"   preload="auto"></audio>
+  <audio id="walkStart"       src="bell_medium.mp3"       preload="auto"></audio>
+  <audio id="walkEnd"         src="bell_medium_ending.mp3"         preload="auto"></audio>
+
+  <script>
+    const MIN = 60_000; // 1 minute in ms
+
+    function buildSchedule() {
+      // All times in MINUTES from the moment you press Start.
+      //
+      // Example pattern:
+      // - 0:00   meditation start
+      // - 25:00  meditation end
+      // - 32:00  walk start
+      // - 57:00  walk end
+      // - 64:00  meditation start
+      // - 89:00  meditation end
+
+      const tStartup = 1
+      const tMeditation = 15
+      const tIntervall = 1
+      const tWalking = 2
+
+      const tStartMeditation1 = tStartup
+      const tEndMeditation1 = tStartMeditation1 + tMeditation
+      const tStartWalking = tEndMeditation1 + tIntervall
+      const tEndWalking = tStartWalking + tWalking
+      const tStartMeditation2 = tEndWalking + tIntervall
+      const tEndMeditation2 = tStartMeditation2 + tMeditation
+
+      const events = [
+        { tMin:  tStartMeditation1, kind: "meditation-start" },
+        { tMin:  tEndMeditation1, kind: "meditation-end"   },
+        { tMin:  tStartWalking, kind: "walk-start"       },
+        { tMin:  tEndWalking, kind: "walk-end"         },
+        { tMin:  tStartMeditation2, kind: "meditation-start" },
+        { tMin:  tEndMeditation2, kind: "meditation-end"   },
+      ];
+
+      // Convert to milliseconds from start
+      return events
+        .map(e => ({ ...e, dueMs: e.tMin * MIN }))
+        .sort((a, b) => a.dueMs - b.dueMs);
+    }
+
+    const startBtn = document.getElementById("startBtn");
+
+    const audios = {
+      "meditation-start": document.getElementById("meditationStart"),
+      "meditation-end":   document.getElementById("meditationEnd"),
+      "walk-start":       document.getElementById("walkStart"),
+      "walk-end":         document.getElementById("walkEnd"),
+    };
+
+    function playBell(kind) {
+      const audio = audios[kind];
+      if (!audio) return;
+      // Restart from the beginning each time
+      audio.currentTime = 0;
+      audio.play().catch(err => {
+        // In case autoplay policy complains, we just log it.
+        console.error("Audio play failed:", err);
+      });
+    }
+
+    startBtn.addEventListener("click", () => {
+      startBtn.disabled = true;
+      document.querySelector("button").classList.add("fadeout");
+      startBtn.textContent = "Enjoy…";
+      document.querySelector(".top-image").classList.add("fadeout");
+
+      const schedule = buildSchedule();
+      const startTime = performance.now();
+
+      // Set one timeout per event; avoids the “two bells at once” bug from
+      // overlapping interval checks and makes timing very straightforward.
+      schedule.forEach((event, index) => {
+        const delay = event.dueMs - (performance.now() - startTime);
+
+        // Guard: if delay is negative (e.g., very small timer drift), set to 0
+        const safeDelay = Math.max(0, delay);
+
+        setTimeout(() => {
+          const now = performance.now();
+          const elapsed = (now - startTime) / 1000;
+          const scheduled = event.tMin * 60;
+          const drift = (elapsed - scheduled).toFixed(3);
+
+          console.log(
+            `EVENT ${event.kind} | scheduled ${scheduled}s | actual ${elapsed.toFixed(3)}s | drift ${drift}s | ${new Date().toLocaleTimeString()}`
+          );
+          playBell(event.kind);
+
+          // If this was the last event, update button text
+          if (index === schedule.length - 1) {
+            document.querySelector("button").classList.remove("fadeout");
+            document.querySelector("button").classList.add("fadein");
+            startBtn.textContent = "You did well, my young Padawan";
+            document.querySelector(".top-image").classList.add("fadein");
+
+          }
+        }, safeDelay);
+      });
+
+      // Optional: fire the very first event immediately if it's at t=0
+      const first = schedule[0];
+      if (first && first.dueMs === 0) {
+        playBell(first.kind);
+      }
+    });
+  </script>
+</body>
+</html>
